@@ -40,6 +40,16 @@ npx hardhat test test/MedskyContract.test.js
 npx hardhat clean
 ```
 
+### To Create .abi and .bin file
+```shell
+solc --abi --bin healthyContract.sol -o build
+```
+
+### To create a wrapper for the contract
+```shell
+web3j generate solidity   --binFile=build/MedicalRecordAccess.bin   --abiFile=build/MedicalRecordAccess.abi   --outputDir=app/src/main/java   --package=com.example.ethktprototype.contracts
+```
+
 ### 🛠️ Developer Notes
 - Contracts are written in Solidity ^0.8.28
 - Tests use Ethers.js (v6+) and Chai
