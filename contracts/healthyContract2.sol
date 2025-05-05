@@ -8,8 +8,9 @@ contract MedicalRecordAccess2 {
     enum RequestStatus { Pending, Approved, Denied }
 
     struct AccessRequest {
-        address doctor;
-        address patient;
+        address doctorAddress;
+        address patientAddress;
+        string doctorMedplumId;
         string recordId;
         string recordType;
         uint256 timestamp;
@@ -56,13 +57,14 @@ contract MedicalRecordAccess2 {
         return keccak256(abi.encodePacked(doctor, patient, recordType, timestamp));
     }
 
-    function doctorRequestAccess(address doctor, address patient, string memory recordId, string memory recordType) external {
+    function doctorRequestAccess(address doctor, address patient, string memory doctorId, string memory recordId, string memory recordType) external {
         AccessRequest storage existing = accessRequests[doctor][recordId];
         require(existing.timestamp == 0, "Request already exists");
 
         AccessRequest memory newRequest = AccessRequest({
-            doctor: doctor,
-            patient: patient,
+            doctorAddress: doctor,
+            patientAddress: patient,
+            doctorMedplumId: doctorId,
             recordId: recordId,
             recordType: recordType,
             timestamp: block.timestamp,
@@ -75,28 +77,9 @@ contract MedicalRecordAccess2 {
         emit AccessRequested(doctor, patient, recordId, block.timestamp);
     }
 
-    function requestAccess(address patient, string memory recordId, string memory recordType) external {
-        AccessRequest storage existing = accessRequests[msg.sender][recordId];
-        require(existing.timestamp == 0, "Request already exists");
-
-        AccessRequest memory newRequest = AccessRequest({
-            doctor: msg.sender,
-            patient: patient,
-            recordId: recordId,
-            recordType: recordType,
-            timestamp: block.timestamp,
-            status: RequestStatus.Pending
-        });
-
-        accessRequests[msg.sender][recordId] = newRequest;
-        accessRequestsList.push(newRequest);
-
-        emit AccessRequested(msg.sender, patient, recordId, block.timestamp);
-    }
-
     function approveAccess(address doctor, string memory recordId) external {
         AccessRequest storage request = accessRequests[doctor][recordId];
-        require(request.patient == msg.sender, "Only patient can approve");
+        require(request.patientAddress == msg.sender, "Only patient can approve");
         require(request.status == RequestStatus.Pending, "Already processed");
 
         request.status = RequestStatus.Approved;
@@ -114,7 +97,7 @@ contract MedicalRecordAccess2 {
 
     function denyAccess(address doctor, string memory recordId) external {
         AccessRequest storage request = accessRequests[doctor][recordId];
-        require(request.patient == msg.sender, "Only patient can deny");
+        require(request.patientAddress == msg.sender, "Only patient can deny");
         require(request.status == RequestStatus.Pending, "Already processed");
 
         request.status = RequestStatus.Denied;
@@ -122,43 +105,8 @@ contract MedicalRecordAccess2 {
         emit AccessDenied(doctor, msg.sender, recordId, block.timestamp);
     }
 
-    function hasAccess(string memory recordId, address user) external view returns (bool) {
-        address[] memory allowedUsers = recordAccessList[recordId];
-        for (uint256 i = 0; i < allowedUsers.length; i++) {
-            if (allowedUsers[i] == user) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /*function getRequestStatus(string memory recordId, address requester) external view returns (AccessStatus) {
-        bytes32 requestKey = keccak256(abi.encodePacked(recordId, requester));
-        return accessRequests[requestKey].status;
-    }*/
-
-    function logAccess(address doctor, address patient, string memory recordId, string memory recordType) external {
-        accessLogs.push(MedicalAccessLog({
-            doctor: doctor,
-            patient: patient,
-            recordId: recordId,
-            recordType: recordType,
-            timestamp: block.timestamp
-        }));
-
-        emit RecordAccessed(doctor, patient, recordType, block.timestamp);
-    }
-
-    function getAccessLogs() external view returns (MedicalAccessLog[] memory) {
-        return accessLogs;
-    }
-
     function getAccessRequest(address doctor, string memory recordId) external view returns (AccessRequest memory) {
         return accessRequests[doctor][recordId];
-    }
-
-    function getAccessRequests() external view returns (AccessRequest[] memory) {
-        return accessRequestsList;
     }
 
     // Moves the pointer forward
@@ -181,12 +129,17 @@ contract MedicalRecordAccess2 {
         return result;
     }
 
+    function generateSampleAccessRequests() external {
+        _generateSampleAccessRequests();
+    }
+
     function _generateSampleAccessRequests() internal {
-        for (uint256 i = 0; i < 50; i++) {
+        for (uint256 i = 0; i < 15; i++) {
             address doctor = address(uint160(uint256(keccak256(abi.encodePacked("doctor", i)))));
             address patient = 0xe8291f943C0E168695c196482d261fC6258b30DC;
             string memory recordType = i % 2 == 0 ? "MRI" : "X-Ray";
             string memory recordId = Strings.toString(i+1);
+            string memory doctorId = "01968b55-08af-70ce-8159-23b14e09a48a";
 
             RequestStatus status = RequestStatus.Pending;
             if (i % 3 == 0) {
@@ -198,8 +151,9 @@ contract MedicalRecordAccess2 {
             }
 
             AccessRequest memory newRequest = AccessRequest({
-                doctor: doctor,
-                patient: patient,
+                doctorAddress: doctor,
+                patientAddress: patient,
+                doctorMedplumId: doctorId,
                 recordId: recordId,
                 recordType: recordType,
                 timestamp: block.timestamp - (i * 1 days),
@@ -210,22 +164,4 @@ contract MedicalRecordAccess2 {
             accessRequestsList.push(newRequest);
         }
     }
-
-    function deleteAccessRequests() external onlyOwner {
-        // Clean up the accessRequests mapping using accessRequestsList
-        for (uint256 i = 0; i < accessRequestsList.length; i++) {
-            AccessRequest storage request = accessRequestsList[i];
-            delete accessRequests[request.doctor][request.recordId];
-        }
-
-        // Clear the array
-        delete accessRequestsList;
-
-        // Reset sync pointer
-        syncPointer = 0;
-
-        // Re-generate sample access requests for testing
-        _generateSampleAccessRequests();
-    }
-
 }

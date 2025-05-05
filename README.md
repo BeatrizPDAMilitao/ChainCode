@@ -43,6 +43,8 @@ npx hardhat clean
 ### To Create .abi and .bin file
 ```shell
 solc --abi --bin healthyContract.sol -o build
+
+solc --abi --bin contracts/healthyContract2.sol -o build   --base-path .   --include-path node_modules
 ```
 
 ### To create a wrapper for the contract
