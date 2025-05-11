@@ -129,12 +129,8 @@ contract MedicalRecordAccess2 {
         return result;
     }
 
-    function generateSampleAccessRequests() external {
-        _generateSampleAccessRequests();
-    }
-
     function _generateSampleAccessRequests() internal {
-        for (uint256 i = 0; i < 15; i++) {
+        for (uint256 i = 0; i < 12; i++) {
             address doctor = address(uint160(uint256(keccak256(abi.encodePacked("doctor", i)))));
             address patient = 0xe8291f943C0E168695c196482d261fC6258b30DC;
             string memory recordType = i % 2 == 0 ? "MRI" : "X-Ray";
@@ -160,7 +156,7 @@ contract MedicalRecordAccess2 {
                 status: status
             });
 
-            accessRequests[msg.sender][recordId] = newRequest;
+            accessRequests[doctor][recordId] = newRequest;
             accessRequestsList.push(newRequest);
         }
     }
