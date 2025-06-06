@@ -37,7 +37,6 @@ contract MedicalRecordAccess2 {
     event AccessRequested(address indexed doctor, address indexed patient, string recordId, uint256 timestamp);
     event AccessApproved(address indexed doctor, address indexed patient, string recordId, uint256 timestamp);
     event AccessDenied(address indexed doctor, address indexed patient, string recordId, uint256 timestamp);
-    event RecordAccessed(address indexed doctor, address indexed patient, string recordType, uint256 timestamp);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Only owner can perform this");
@@ -51,10 +50,6 @@ contract MedicalRecordAccess2 {
 
     function resetSyncPointer() external {
         syncPointer = 0;
-    }
-
-    function getRequestId(address doctor, address patient, string memory recordType, uint256 timestamp) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(doctor, patient, recordType, timestamp));
     }
 
     function doctorRequestAccess(address doctor, address patient, string memory doctorId, string memory recordId, string memory recordType) external {
