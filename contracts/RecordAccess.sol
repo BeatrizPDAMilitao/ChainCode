@@ -7,7 +7,7 @@ contract RecordAccessContract {
 
     struct RecordAccess {
         address requester;
-        string[] recordIds;
+        string[] queries;
         uint256 timestamp;
     }
 
@@ -29,7 +29,7 @@ contract RecordAccessContract {
 
         RecordAccess memory newAccess = RecordAccess({
             requester: msg.sender,
-            recordIds: recordIds,
+            queries: recordIds,
             timestamp: block.timestamp
         });
         accesses[accessId] = newAccess;
