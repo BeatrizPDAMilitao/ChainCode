@@ -7,6 +7,19 @@ contract MedicalRecordAccess2 {
     using Strings for uint256;
     enum RequestStatus { Pending, Approved, Denied }
 
+    error RequestAlreadyExists(string accessId);
+    error OnlyPatientCanApprove();
+    error OnlyPatientCanDeny();
+    error RequestAlreadyProcessed();
+
+    
+    struct Record {
+        address requestor;
+        string hash;
+        string version;
+        uint256 lastUpdated;
+    }
+
     struct AccessRequest {
         address doctorAddress;
         address patientAddress;
@@ -26,6 +39,9 @@ contract MedicalRecordAccess2 {
     }
 
     address public owner;
+    mapping(string => Record) private records;
+    mapping(string => bool) private recordExistsMap;
+
     mapping(address => mapping(string => AccessRequest)) public accessRequests;
     AccessRequest[] public accessRequestsList;
 
@@ -37,6 +53,7 @@ contract MedicalRecordAccess2 {
     event AccessRequested(address indexed doctor, address indexed patient, string recordId, uint256 timestamp);
     event AccessApproved(address indexed doctor, address indexed patient, string recordId, uint256 timestamp);
     event AccessDenied(address indexed doctor, address indexed patient, string recordId, uint256 timestamp);
+    event RecordCreated(string recordId, address indexed requestor);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Only owner can perform this");
@@ -54,7 +71,9 @@ contract MedicalRecordAccess2 {
 
     function doctorRequestAccess(address doctor, address patient, string memory doctorId, string memory recordId, string memory recordType) external {
         AccessRequest storage existing = accessRequests[doctor][recordId];
-        require(existing.timestamp == 0, "Request already exists");
+        if (existing.timestamp != 0) {
+            revert RequestAlreadyExists(recordId);
+        }
 
         AccessRequest memory newRequest = AccessRequest({
             doctorAddress: doctor,
@@ -74,8 +93,12 @@ contract MedicalRecordAccess2 {
 
     function approveAccess(address doctor, string memory recordId) external {
         AccessRequest storage request = accessRequests[doctor][recordId];
-        require(request.patientAddress == msg.sender, "Only patient can approve");
-        require(request.status == RequestStatus.Pending, "Already processed");
+        if (request.patientAddress != msg.sender) {
+            revert OnlyPatientCanApprove();
+        }
+        if (request.status != RequestStatus.Pending) {
+            revert RequestAlreadyProcessed();
+        }
 
         request.status = RequestStatus.Approved;
 
@@ -92,8 +115,12 @@ contract MedicalRecordAccess2 {
 
     function denyAccess(address doctor, string memory recordId) external {
         AccessRequest storage request = accessRequests[doctor][recordId];
-        require(request.patientAddress == msg.sender, "Only patient can deny");
-        require(request.status == RequestStatus.Pending, "Already processed");
+        if (request.patientAddress != msg.sender) {
+            revert OnlyPatientCanDeny();
+        }
+        if (request.status != RequestStatus.Pending) {
+            revert RequestAlreadyProcessed();
+        }
 
         request.status = RequestStatus.Denied;
 
@@ -155,4 +182,39 @@ contract MedicalRecordAccess2 {
             accessRequestsList.push(newRequest);
         }
     }
+
+    function createRecord(string memory recordId, string memory hash) public {
+        Record storage newRecord = records[recordId];
+        newRecord.requestor = msg.sender;
+        newRecord.hash = hash;
+        newRecord.version = "xyz";
+        newRecord.lastUpdated = block.timestamp;
+        recordExistsMap[recordId] = true;
+
+        emit RecordCreated(recordId, msg.sender);
+    }
+
+    function getPatientAccessRequests() external view returns (AccessRequest[] memory) {
+        uint256 total = 0;
+
+        // First pass: count the number of requests for msg.sender
+        for (uint256 i = 0; i < accessRequestsList.length; i++) {
+            if (accessRequestsList[i].patientAddress == msg.sender) {
+                total++;
+            }
+        }
+
+        // Second pass: collect them
+        AccessRequest[] memory result = new AccessRequest[](total);
+        uint256 index = 0;
+        for (uint256 i = 0; i < accessRequestsList.length; i++) {
+            if (accessRequestsList[i].patientAddress == msg.sender) {
+                result[index] = accessRequestsList[i];
+                index++;
+            }
+        }
+
+        return result;
+    }
+
 }
