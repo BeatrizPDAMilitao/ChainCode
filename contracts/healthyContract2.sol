@@ -11,6 +11,7 @@ contract MedicalRecordAccess2 {
     error OnlyPatientCanApprove();
     error OnlyPatientCanDeny();
     error RequestAlreadyProcessed();
+    error AccessWasNotApproved();
 
     
     struct Record {
@@ -25,7 +26,6 @@ contract MedicalRecordAccess2 {
         address patientAddress;
         string doctorMedplumId;
         string recordId;
-        string recordType;
         uint256 timestamp;
         RequestStatus status;
     }
@@ -34,15 +34,14 @@ contract MedicalRecordAccess2 {
         address doctor;
         address patient;
         string recordId;
-        string recordType; // e.g., "MRI", "X-Ray"
         uint256 timestamp;
     }
 
     address public owner;
-    mapping(string => Record) private records;
+    mapping(string => Record) private records; // Maps recordId to Record. Where recordId is like "Patient/resourcedId"
     mapping(string => bool) private recordExistsMap;
 
-    mapping(address => mapping(string => AccessRequest)) public accessRequests;
+    mapping(address => mapping(string => AccessRequest)) public accessRequests; // Maps doctor address to recordId to AccessRequest
     AccessRequest[] public accessRequestsList;
 
     mapping(string => address[]) public recordAccessList;
@@ -54,6 +53,7 @@ contract MedicalRecordAccess2 {
     event AccessApproved(address indexed doctor, address indexed patient, string recordId, uint256 timestamp);
     event AccessDenied(address indexed doctor, address indexed patient, string recordId, uint256 timestamp);
     event RecordCreated(string recordId, address indexed requestor);
+    event AccessRevoked(address indexed doctor, address indexed patient, string recordId, uint256 timestamp);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Only owner can perform this");
@@ -62,14 +62,13 @@ contract MedicalRecordAccess2 {
 
     constructor() {
         owner = msg.sender;
-        _generateSampleAccessRequests();
     }
 
     function resetSyncPointer() external {
         syncPointer = 0;
     }
 
-    function doctorRequestAccess(address doctor, address patient, string memory doctorId, string memory recordId, string memory recordType) external {
+    function doctorRequestAccess(address doctor, address patient, string memory doctorId, string memory recordId) external {
         AccessRequest storage existing = accessRequests[doctor][recordId];
         if (existing.timestamp != 0) {
             revert RequestAlreadyExists(recordId);
@@ -80,7 +79,6 @@ contract MedicalRecordAccess2 {
             patientAddress: patient,
             doctorMedplumId: doctorId,
             recordId: recordId,
-            recordType: recordType,
             timestamp: block.timestamp,
             status: RequestStatus.Pending
         });
@@ -101,12 +99,23 @@ contract MedicalRecordAccess2 {
         }
 
         request.status = RequestStatus.Approved;
+        // Also update the access list for the record
+        // Update the status in the accessRequestsList as well
+        for (uint256 i = 0; i < accessRequestsList.length; i++) {
+            if (
+            accessRequestsList[i].doctorAddress == doctor &&
+            keccak256(abi.encodePacked(accessRequestsList[i].recordId)) == keccak256(abi.encodePacked(recordId)) &&
+            accessRequestsList[i].patientAddress == msg.sender
+            ) {
+            accessRequestsList[i].status = RequestStatus.Approved;
+            break;
+            }
+        }
 
         accessLogs.push(MedicalAccessLog({
             doctor: doctor,
             patient: msg.sender,
             recordId: recordId,
-            recordType: request.recordType,
             timestamp: block.timestamp
         }));
 
@@ -122,9 +131,42 @@ contract MedicalRecordAccess2 {
             revert RequestAlreadyProcessed();
         }
 
-        request.status = RequestStatus.Denied;
+        //request.status = RequestStatus.Denied;
+        // Delete the request instead of marking as Denied
+        delete accessRequests[doctor][recordId];
+        // Remove from the accessRequestsList
+        deleteRecordFromAccessRequestsList(request);
 
         emit AccessDenied(doctor, msg.sender, recordId, block.timestamp);
+    }
+
+    function revokeAccess(address doctor, string memory recordId) external {
+        AccessRequest storage request = accessRequests[doctor][recordId];
+        if (request.patientAddress != msg.sender) {
+            revert OnlyPatientCanDeny();
+        }
+        if (request.status == RequestStatus.Approved) {
+            delete accessRequests[doctor][recordId];
+            // Remove from the accessRequestsList
+            deleteRecordFromAccessRequestsList(request);
+            emit AccessRevoked(doctor, msg.sender, recordId, block.timestamp);
+        } else {
+            revert AccessWasNotApproved();
+        }
+
+        emit AccessDenied(doctor, msg.sender, recordId, block.timestamp);
+    }
+
+    function deleteRecordFromAccessRequestsList(AccessRequest memory request) internal {
+        for (uint256 i = 0; i < accessRequestsList.length; i++) {
+            if (keccak256(abi.encodePacked(accessRequestsList[i].recordId)) == keccak256(abi.encodePacked(request.recordId)) &&
+                accessRequestsList[i].doctorAddress == request.doctorAddress &&
+                accessRequestsList[i].patientAddress == request.patientAddress) {
+                accessRequestsList[i] = accessRequestsList[accessRequestsList.length - 1];
+                accessRequestsList.pop();
+                break;
+            }
+        }
     }
 
     function getAccessRequest(address doctor, string memory recordId) external view returns (AccessRequest memory) {
@@ -149,38 +191,6 @@ contract MedicalRecordAccess2 {
         }
 
         return result;
-    }
-
-    function _generateSampleAccessRequests() internal {
-        for (uint256 i = 0; i < 12; i++) {
-            address doctor = address(uint160(uint256(keccak256(abi.encodePacked("doctor", i)))));
-            address patient = 0xe8291f943C0E168695c196482d261fC6258b30DC;
-            string memory recordType = i % 2 == 0 ? "MRI" : "X-Ray";
-            string memory recordId = Strings.toString(i+1);
-            string memory doctorId = "01968b55-08af-70ce-8159-23b14e09a48a";
-
-            RequestStatus status = RequestStatus.Pending;
-            if (i % 3 == 0) {
-                status = RequestStatus.Pending;
-            } else if (i % 3 == 1) {
-                status = RequestStatus.Approved;
-            } else if (i % 3 == 2) {
-                status = RequestStatus.Denied;
-            }
-
-            AccessRequest memory newRequest = AccessRequest({
-                doctorAddress: doctor,
-                patientAddress: patient,
-                doctorMedplumId: doctorId,
-                recordId: recordId,
-                recordType: recordType,
-                timestamp: block.timestamp - (i * 1 days),
-                status: status
-            });
-
-            accessRequests[doctor][recordId] = newRequest;
-            accessRequestsList.push(newRequest);
-        }
     }
 
     function createRecord(string memory recordId, string memory hash) public {

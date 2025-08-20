@@ -11,8 +11,8 @@ contract RecordAccessContract {
         uint256 timestamp;
     }
 
-    mapping(string => RecordAccess) private accesses;
-    mapping(string => bool) private accessExistsMap;
+    mapping(string => RecordAccess) private accesses; // Maps accessId to RecordAccess
+    mapping(string => bool) private accessExistsMap; // Maps accessId to existence
 
 
     event RecordAccessed(
